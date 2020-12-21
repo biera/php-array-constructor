@@ -11,12 +11,22 @@ trait ArrayConstructor
 
     public static function createFromArray(array $params)
     {
+        return self::doCreateFromArray($params);
+    }
+
+    protected static function doCreateFromArray(array $params)
+    {
         return new self(...static::getConstructorParameters($params));
     }
 
     public static function createFromPrimitives(array $params)
     {
-        $methodName = __FUNCTION__;
+        return self::doCreateFromPrimitives($params);
+    }
+
+    protected static function doCreateFromPrimitives(array $params)
+    {
+        $methodName = 'createFromPrimitives';
 
         $nonPrimitiveParameters = array_filter(
             self::getConstructorParametersMetadata(),
@@ -92,8 +102,19 @@ trait ArrayConstructor
     private static function getConstructorParametersMetadata(): array
     {
         if (is_null(self::$constructorParametersMetadata)) {
-            self::$constructorParametersMetadata = getConstructorParametersMetadata(__CLASS__);
-
+            try {
+                self::$constructorParametersMetadata = getConstructorParametersMetadata(__CLASS__);
+            } catch (\LogicException $exception) {
+                throw new \LogicException(
+                    sprintf(
+                        '%s class error: %s',
+                        __CLASS__,
+                        $exception->getMessage()
+                    ),
+                    0,
+                    $exception
+                );
+            }
         }
 
         return self::$constructorParametersMetadata;
