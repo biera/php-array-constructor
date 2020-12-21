@@ -63,6 +63,28 @@ class ParameterMetadata
                 $this->primitive = false;
                 $this->nonPrimitiveList = false;
             }
+        } else if (!is_null($paramTag)) {
+            $types = array_filter(
+                $paramTag->getTypes(),
+                function (string $type) {
+                    return !in_array($type, ['int', 'float', 'bool', 'string', 'null', 'array']);
+                }
+            );
+
+            $typesCount = \count($types);
+
+            if ($typesCount > 1) {
+                throw new \LogicException(
+                    sprintf('More than one non-primitive type provided: %s.', \join(', ', $types))
+                );
+            }
+
+            if ($typesCount == 1) {
+                $this->primitive = false;
+                $type = $this->parseCompoundType($types[0]);
+                $this->nonPrimitiveList = !is_null($type);
+                $this->type = $this->nonPrimitiveList ? $type : $types[0];
+            }
         }
     }
 

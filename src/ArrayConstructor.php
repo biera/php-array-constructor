@@ -2,9 +2,7 @@
 
 namespace Biera;
 
-use Laminas\Code\Reflection\DocBlock\Tag\ParamTag;
 use Laminas\Code\Reflection\ClassReflection;
-use Laminas\Code\Reflection\ParameterReflection;
 
 trait ArrayConstructor
 {
