@@ -28,85 +28,95 @@ trait ArrayConstructor
     {
         $methodName = 'createFromPrimitives';
 
-        $nonPrimitiveParameters = array_filter(
+        $complexOrPrimitiveParameters = array_filter(
             self::getConstructorParametersMetadata(),
             function (ParameterMetadata $parameterMetadata) use ($params) {
-                return !$parameterMetadata->isPrimitive();
+                return $parameterMetadata->isComplex();
             }
         );
 
-        $nonPrimitiveParameterToValueMap = array_map(
+        $nonPrimitiveParameterToValueMap = \array_map(
             function (ParameterMetadata $parameterMetadata) use ($methodName, $params) {
                 $parameterName = $parameterMetadata->getName();
                 $parameterValue = $params[$parameterName] ?? null;
 
-                if ($parameterMetadata->isNullable() && is_null($parameterValue)) {
+                if ($parameterMetadata->isNullable() && \is_null($parameterValue)) {
                     return null;
                 }
 
-                try {
-                    $class = new ClassReflection($parameterMetadata->getType());
+                foreach ($parameterMetadata->getTypes() as [$type, $isPrimitive, $isList]) {
+                    try {
+                        if ($isPrimitive) {
+                            if (\call_user_func("is_$type", $parameterValue) && (!$isList || \is_iterable($type))) {
+                                return $parameterValue;
+                            }
+                        } else {
+                            $classReflection = new ClassReflection($type);
 
-                    if (!in_array(ArrayConstructor::class, $class->getTraitNames())) {
+                            if (is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
+                                return $parameterValue;
+                            }
+
+                            $constructor = [$classReflection->getName(), $methodName];
+
+                            if ($isList) {
+                                if (\is_iterable($parameterValue)) {
+                                    return \array_map(
+                                        function ($parameterValue) use ($constructor, $classReflection) {
+
+                                            if (is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
+                                                return $parameterValue;
+                                            }
+
+                                            return \call_user_func($constructor, $parameterValue);
+                                        },
+                                        $parameterValue
+                                    );
+                                }
+                            } else {
+                                return \call_user_func($constructor, $parameterValue);
+                            }
+                        }
+                    } catch (\ReflectionException $e) {
                         throw new \LogicException(
-                            sprintf(
-                                'Class %s must use %s trait',
-                                $class->getName(),
-                                ArrayConstructor::class
-                            )
+                            "Class {$type} does not exists", 0, $e
                         );
+                    } catch (\Throwable $e) {
                     }
-                } catch (\ReflectionException $e) {
-                    throw new \LogicException(
-                        "Class {$parameterMetadata->getType()} does not exists", 0, $e
-                    );
                 }
 
-                $paramPrimitiveValue = $params[$parameterMetadata->getName()];
-                $constructor = [$class->getName(), $methodName];
-
-                if ($parameterMetadata->isNonPrimitiveList()) {
-                    if (!is_array($paramPrimitiveValue)) {
-                        throw new \LogicException();
-                    }
-
-                    $value = array_map($constructor, $paramPrimitiveValue);
-                } else {
-                    $value = call_user_func($constructor, $paramPrimitiveValue);
-                }
-
-                return $value;
+                throw new \RuntimeException("Can't instantiate \"{$parameterName}\" parameter");
             },
-            $nonPrimitiveParameters
+            $complexOrPrimitiveParameters
         );
 
         return static::createFromArray(
-            array_merge($params, $nonPrimitiveParameterToValueMap)
+            \array_merge($params, $nonPrimitiveParameterToValueMap)
         );
     }
 
     private static function getConstructorParameters(array $params): array
     {
-        $defaults = array_map(
+        $defaults = \array_map(
             function (ParameterMetadata $parameterMetadata) {
                 return $parameterMetadata->getDefault(null);
             },
             self::getConstructorParametersMetadata()
         );
 
-        return array_values(
-            array_merge($defaults, $params)
+        return \array_values(
+            \array_merge($defaults, $params)
         );
     }
 
     private static function getConstructorParametersMetadata(): array
     {
-        if (is_null(self::$constructorParametersMetadata)) {
+        if (\is_null(self::$constructorParametersMetadata)) {
             try {
                 self::$constructorParametersMetadata = getConstructorParametersMetadata(__CLASS__);
             } catch (\LogicException $exception) {
                 throw new \LogicException(
-                    sprintf(
+                    \sprintf(
                         '%s class error: %s',
                         __CLASS__,
                         $exception->getMessage()
@@ -120,5 +130,3 @@ trait ArrayConstructor
         return self::$constructorParametersMetadata;
     }
 }
-
-

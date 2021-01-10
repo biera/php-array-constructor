@@ -4,98 +4,86 @@ namespace Biera;
 
 use Laminas\Code\Reflection\DocBlock\Tag\ParamTag;
 use Laminas\Code\Reflection\ParameterReflection;
+use function iter\any;
 
 /**
  * @internal
  */
 class ParameterMetadata
 {
-    private $parameterReflection;
-    /** @var bool|null */
-    private $primitive;
-    /** @var bool|null */
-    private $nonPrimitiveList;
-    /** @var string|null */
-    private $type;
-
     const FQCN = '/^(\\\?([a-zA-Z_\\x80-\\xFF][a-zA-Z0-9_\\x80-\\xFF]*)(\\\[a-zA-Z_\\x80-\\xFF][a-zA-Z0-9_\\x80-\\xFF]*)*)\[\]$/';
+
+    const PRIMITIVES = [
+        'int', 'string', 'float', 'bool', 'array', 'iterable', 'callable', 'null'
+    ];
+
+    private \ReflectionParameter $parameterReflection;
+    private ?array $types;
 
     public function __construct(ParameterReflection $parameterReflection, ParamTag $paramTag = null)
     {
-        $this->parameterReflection = $parameterReflection;
+        $name = $parameterReflection->getName();
+        $getTypeMetadata = function (string $type) {
+            $parsed = $this->extractType($type);
 
-        if ($parameterReflection->hasType()) {
-            $type = $parameterReflection->getType();
-            $this->type = (string) $type;
+            // tuple: [type (string), isPrimitive (bool), isList (bool)]
+            return [$parsed, in_array($parsed, self::PRIMITIVES), $type != $parsed];
+        };
 
-            // check if the type is list of objects ("ClassName[]")
-            // by inspecting docblock @param tag (if exists)
-            if ('array' == (string) $type && !is_null($paramTag)) {
+        $types = array_map(
+            $getTypeMetadata,
+            $parameterReflection->hasType()
+                ? $this->extractTypes(
+                $parameterReflection->getType()
+            )
+                : []
+        );
+
+        $dockBlockTypes = array_map(
+            $getTypeMetadata,
+            !is_null($paramTag)
+                ? $paramTag->getTypes()
+                : []
+        );
+
+        if ($this->isType('array', false, $types)) {
+            if (!$this->isType('array', false, $dockBlockTypes) && $this->isList($dockBlockTypes)) {
                 $types = array_filter(
-                    array_map(
-                        function (string $type) {
-                            return $this->parseCompoundType($type);
-                        },
-                        $paramTag->getTypes()
-                    )
+                    $types, fn($typeMetadata) => $typeMetadata[0] != 'array'
                 );
-
-                switch (count($types)) {
-                    case 1:
-                        $this->type = $types[0];
-                        $this->primitive = false;
-                        $this->nonPrimitiveList = true;
-                        break;
-
-                    case 0:
-                        $this->primitive = true;
-                        $this->nonPrimitiveList = false;
-                        break;
-
-                    default:
-                        throw new \LogicException();
-                }
-
-            } elseif ($type->isBuiltin()) {
-                $this->primitive = true;
-                $this->nonPrimitiveList = false;
-            } else {
-                $this->primitive = false;
-                $this->nonPrimitiveList = false;
-            }
-        } else if (!is_null($paramTag)) {
-            $types = array_filter(
-                $paramTag->getTypes(),
-                function (string $type) {
-                    return !in_array($type, ['int', 'float', 'bool', 'string', 'null', 'array']);
-                }
-            );
-
-            $typesCount = \count($types);
-
-            if ($typesCount > 1) {
-                throw new \LogicException(
-                    sprintf('More than one non-primitive type provided: %s.', \join(', ', $types))
-                );
-            }
-
-            if ($typesCount == 1) {
-                $this->primitive = false;
-                $type = $this->parseCompoundType($types[0]);
-                $this->nonPrimitiveList = !is_null($type);
-                $this->type = $this->nonPrimitiveList ? $type : $types[0];
             }
         }
+
+        $this->types = array_merge($dockBlockTypes, $types);
+        $this->parameterReflection = $parameterReflection;
     }
 
-    public function isPrimitive(): bool
+    public function isPrimitive(array $types = null): bool
     {
-        return is_null($this->primitive) ? true : $this->primitive;
+        return any(
+            fn($typeMetadata) => $typeMetadata[1], !is_null($types) ? $types : $this->types
+        );
     }
 
-    public function isNonPrimitiveList(): bool
+    public function isComplex(array $types = null): bool
     {
-        return is_null($this->nonPrimitiveList) ? false : $this->nonPrimitiveList;
+        return any(
+            fn($typeMetadata) => !$typeMetadata[1], !is_null($types) ? $types : $this->types
+        );
+    }
+
+    public function isList(array $types = null): bool
+    {
+        return any(
+            fn($typeMetadata) => $typeMetadata[2], !is_null($types) ? $types : $this->types
+        );
+    }
+
+    public function isType(string $type, bool $isList, array $types = null): bool
+    {
+        return any(
+            fn($typeMetadata) => $type == $typeMetadata[0] && $isList == $typeMetadata[2], !is_null($types) ? $types : $this->types
+        );
     }
 
     public function isNullable(): bool
@@ -108,9 +96,9 @@ class ParameterMetadata
         return $this->parameterReflection->getName();
     }
 
-    public function getType(): ?string
+    public function getTypes(): array
     {
-        return $this->type;
+        return $this->types;
     }
 
     /**
@@ -128,14 +116,18 @@ class ParameterMetadata
         return $default;
     }
 
-    /**
-     * Parse list types of shape "ClassName[]" and extracts
-     * the class part ("ClassName") or null in case of pattern mismatch
-     */
-    private function parseCompoundType(string $type): ?string
+    private function extractTypes(\ReflectionType $metadata): array
     {
-        preg_match(self::FQCN, $type, $matches);
+        return array_map(
+            fn(\ReflectionNamedType $type) => (string) $type,
+            $metadata instanceof \ReflectionUnionType ? $metadata->getTypes() : [$metadata]
+        );
+    }
 
-        return $matches[1] ?? null;
+    private function extractType(string $possibleListType): ?string
+    {
+        preg_match(self::FQCN, $possibleListType, $matches);
+
+        return $matches[1] ?? $possibleListType;
     }
 }
