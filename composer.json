@@ -10,7 +10,9 @@
         }
     ],
     "require": {
-        "laminas/laminas-code": "^3.4"
+        "php": ">=7.4",
+        "laminas/laminas-code": "^3.4",
+        "nikic/iter": "^2.0"
     },
     "autoload": {
         "psr-4": { "Biera\\": "src" },

@@ -28,7 +28,7 @@ trait ArrayConstructor
     {
         $methodName = 'createFromPrimitives';
 
-        $complexOrPrimitiveParameters = array_filter(
+        $complexOrPrimitiveParameters = \array_filter(
             self::getConstructorParametersMetadata(),
             function (ParameterMetadata $parameterMetadata) use ($params) {
                 return $parameterMetadata->isComplex();
@@ -37,6 +37,7 @@ trait ArrayConstructor
 
         $nonPrimitiveParameterToValueMap = \array_map(
             function (ParameterMetadata $parameterMetadata) use ($methodName, $params) {
+                $instantiationErrors = [];
                 $parameterName = $parameterMetadata->getName();
                 $parameterValue = $params[$parameterName] ?? null;
 
@@ -53,7 +54,8 @@ trait ArrayConstructor
                         } else {
                             $classReflection = new ClassReflection($type);
 
-                            if (is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
+                            // the value is an instance of declared type
+                            if (\is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
                                 return $parameterValue;
                             }
 
@@ -64,7 +66,7 @@ trait ArrayConstructor
                                     return \array_map(
                                         function ($parameterValue) use ($constructor, $classReflection) {
 
-                                            if (is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
+                                            if (\is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
                                                 return $parameterValue;
                                             }
 
@@ -77,15 +79,15 @@ trait ArrayConstructor
                                 return \call_user_func($constructor, $parameterValue);
                             }
                         }
-                    } catch (\ReflectionException $e) {
-                        throw new \LogicException(
-                            "Class {$type} does not exists", 0, $e
-                        );
+                    } catch (InstantiationException $instantiationError) {
+                        throw new InstantiationException($parameterName, [], $instantiationError);
+
                     } catch (\Throwable $e) {
+                        $instantiationErrors[] = $e;
                     }
                 }
 
-                throw new \RuntimeException("Can't instantiate \"{$parameterName}\" parameter");
+                throw new InstantiationException($parameterName, $instantiationErrors);
             },
             $complexOrPrimitiveParameters
         );
@@ -112,19 +114,7 @@ trait ArrayConstructor
     private static function getConstructorParametersMetadata(): array
     {
         if (\is_null(self::$constructorParametersMetadata)) {
-            try {
-                self::$constructorParametersMetadata = getConstructorParametersMetadata(__CLASS__);
-            } catch (\LogicException $exception) {
-                throw new \LogicException(
-                    \sprintf(
-                        '%s class error: %s',
-                        __CLASS__,
-                        $exception->getMessage()
-                    ),
-                    0,
-                    $exception
-                );
-            }
+            self::$constructorParametersMetadata = getConstructorParametersMetadata(__CLASS__);
         }
 
         return self::$constructorParametersMetadata;

@@ -13,21 +13,24 @@ function getConstructorParametersMetadata(string $className): array
     if ($class->hasMethod('__construct')) {
         $constructor = $class->getMethod('__construct');
         $dockBlock = $constructor->getDocBlock();
-        $paramTags = array_reduce(
+        $paramTags = \array_reduce(
             $dockBlock ? $dockBlock->getTags('param') : [],
             function ($paramTags, ParamTag $paramTag) {
-                if (is_null($paramTag->getVariableName())) {
-                    return $paramTags;
-                }
+                $paramName = $paramTag->getVariableName();
 
-                $paramTags[substr($paramTag->getVariableName(), 1)] = $paramTag;
+                if (!\is_null($paramName)) {
+                    // name is always prefixed with "$"
+                    $paramTags[\substr($paramName, 1)] = $paramTag;
+                }
 
                 return $paramTags;
             },
             []
         );
 
-        return array_reduce(
+        // get constructor parameters metadata combining
+        // type declarations with docblock @param tags
+        return \array_reduce(
             $constructor->getParameters(),
             function ($parameterMetadataMap, ParameterReflection $parameterReflection) use ($paramTags) {
                 $parameterName = $parameterReflection->getName();

@@ -22,11 +22,10 @@ class ParameterMetadata
 
     public function __construct(ParameterReflection $parameterReflection, ParamTag $paramTag = null)
     {
-        $name = $parameterReflection->getName();
         $getTypeMetadata = function (string $type) {
-            $parsed = $this->extractType($type);
+            $parsed = $this->extractTypeFromListDeclaration($type);
 
-            // tuple: [type (string), isPrimitive (bool), isList (bool)]
+            // triple: [type <string>, isPrimitive <bool>, isList <bool>]
             return [$parsed, in_array($parsed, self::PRIMITIVES), $type != $parsed];
         };
 
@@ -34,8 +33,8 @@ class ParameterMetadata
             $getTypeMetadata,
             $parameterReflection->hasType()
                 ? $this->extractTypes(
-                $parameterReflection->getType()
-            )
+                    $parameterReflection->getType()
+                )
                 : []
         );
 
@@ -61,28 +60,28 @@ class ParameterMetadata
     public function isPrimitive(array $types = null): bool
     {
         return any(
-            fn($typeMetadata) => $typeMetadata[1], !is_null($types) ? $types : $this->types
+            fn ($typeMetadata) => $typeMetadata[1], !is_null($types) ? $types : $this->types
         );
     }
 
     public function isComplex(array $types = null): bool
     {
         return any(
-            fn($typeMetadata) => !$typeMetadata[1], !is_null($types) ? $types : $this->types
+            fn ($typeMetadata) => !$typeMetadata[1], !is_null($types) ? $types : $this->types
         );
     }
 
     public function isList(array $types = null): bool
     {
         return any(
-            fn($typeMetadata) => $typeMetadata[2], !is_null($types) ? $types : $this->types
+            fn ($typeMetadata) => $typeMetadata[2], !is_null($types) ? $types : $this->types
         );
     }
 
     public function isType(string $type, bool $isList, array $types = null): bool
     {
         return any(
-            fn($typeMetadata) => $type == $typeMetadata[0] && $isList == $typeMetadata[2], !is_null($types) ? $types : $this->types
+            fn ($typeMetadata) => $type == $typeMetadata[0] && $isList == $typeMetadata[2], !is_null($types) ? $types : $this->types
         );
     }
 
@@ -119,12 +118,21 @@ class ParameterMetadata
     private function extractTypes(\ReflectionType $metadata): array
     {
         return array_map(
-            fn(\ReflectionNamedType $type) => (string) $type,
+            fn(\ReflectionNamedType $type) => $type->getName(),
             $metadata instanceof \ReflectionUnionType ? $metadata->getTypes() : [$metadata]
         );
     }
 
-    private function extractType(string $possibleListType): ?string
+    /**
+     * Examples:
+     *
+     *  extractTypeFromListDeclaration("\Fully\Qualified\Class\Name[]") === "Fully\Qualified\Class\Name"
+     *  extractTypeFromListDeclaration("\Fully\Qualified\Class\Name") === "Fully\Qualified\Class\Name"
+     *
+     * @param string $possibleListType
+     * @return string
+     */
+    private function extractTypeFromListDeclaration(string $possibleListType): string
     {
         preg_match(self::FQCN, $possibleListType, $matches);
 
