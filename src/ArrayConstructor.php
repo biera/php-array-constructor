@@ -19,12 +19,12 @@ trait ArrayConstructor
         return new self(...static::getConstructorParameters($params));
     }
 
-    public static function createFromPrimitives(array $params)
+    public static function createFromPrimitives(array $params, array $metadata = [])
     {
-        return self::doCreateFromPrimitives($params);
+        return self::doCreateFromPrimitives($params, $metadata);
     }
 
-    protected static function doCreateFromPrimitives(array $params)
+    protected static function doCreateFromPrimitives(array $params, array $metadata)
     {
         $methodName = 'createFromPrimitives';
 
@@ -36,7 +36,7 @@ trait ArrayConstructor
         );
 
         $nonPrimitiveParameterToValueMap = \array_map(
-            function (ParameterMetadata $parameterMetadata) use ($methodName, $params) {
+            function (ParameterMetadata $parameterMetadata) use ($methodName, $params, $metadata) {
                 $instantiationErrors = [];
                 $parameterName = $parameterMetadata->getName();
                 $parameterValue = $params[$parameterName] ?? null;
@@ -64,19 +64,19 @@ trait ArrayConstructor
                             if ($isList) {
                                 if (\is_iterable($parameterValue)) {
                                     return \array_map(
-                                        function ($parameterValue) use ($constructor, $classReflection) {
+                                        function ($parameterValue) use ($constructor, $classReflection, $metadata) {
 
                                             if (\is_object($parameterValue) && $classReflection->isInstance($parameterValue)) {
                                                 return $parameterValue;
                                             }
 
-                                            return \call_user_func($constructor, $parameterValue);
+                                            return \call_user_func($constructor, $parameterValue, $metadata);
                                         },
                                         $parameterValue
                                     );
                                 }
                             } else {
-                                return \call_user_func($constructor, $parameterValue);
+                                return \call_user_func($constructor, $parameterValue, $metadata);
                             }
                         }
                     } catch (InstantiationException $instantiationError) {
