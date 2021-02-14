@@ -59,6 +59,10 @@ trait ArrayConstructor
                                 return $parameterValue;
                             }
 
+                            if ($parameterValue instanceof \stdClass) {
+                                $parameterValue = (array) $parameterValue;
+                            }
+
                             $constructor = [$classReflection->getName(), $methodName];
 
                             if ($isList) {
